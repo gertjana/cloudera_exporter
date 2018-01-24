@@ -1,8 +1,8 @@
 package main
 
 import (
-	_ "encoding/json"
-	_ "fmt"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	_ "net/http/pprof"
 	_ "net/url"
@@ -92,7 +92,7 @@ type ClouderaHealthCheck struct {
 
 type ClouderaItem struct {
   name string
-  `type` string
+  thetype string `json:"type"`
   serviceUrl string
   serviceState string
   healthSummary string
@@ -100,14 +100,21 @@ type ClouderaItem struct {
 }
 
 type ClouderaResponse struct {
-  Items []ClouderaItem `json:items`
+  items []ClouderaItem 
 }
 
 func getHealth(opts clouderaOpts) ClouderaResponse {
-  req, err := http.NewRequest("GET", opts.uri, nil)
+var clouderaResponse ClouderaResponse
+
+  req, _ := http.NewRequest("GET", opts.uri, nil)
   req.SetBasicAuth(opts.username, opts.password)
+
   cli := &http.Client{}
-  resp, err := cli.Do(req)
+  resp, _ := cli.Do(req)
+
+  json.NewDecoder(resp.Body).Decode(&clouderaResponse)
+  fmt.Println(len(clouderaResponse.items))
+  return clouderaResponse
 }
 
 
