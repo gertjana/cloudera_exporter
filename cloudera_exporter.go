@@ -85,9 +85,22 @@ func init() {
   prometheus.MustRegister(oozie_oozie_servers_healthy)
 }
 
+type ClouderaHealthCheck struct {
+  name string
+  summary string
+}
+
+type ClouderaItem struct {
+  name string
+  `type` string
+  serviceUrl string
+  serviceState string
+  healthSummary string
+  healthChecks []ClouderaHealthCheck
+}
 
 type ClouderaResponse struct {
-  items interface{}
+  Items []ClouderaItem `json:items`
 }
 
 func getHealth(opts clouderaOpts) ClouderaResponse {
