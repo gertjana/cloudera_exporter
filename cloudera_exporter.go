@@ -10,7 +10,7 @@ import (
 	_ "strconv"
 	_ "strings"
 	_ "sync"
-	_ "time"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
@@ -34,9 +34,21 @@ func gauge(name string) prometheus.Gauge {
     Namespace: namespace,
     Subsystem: "cloudera",
     Name:      name,
-    Help:      "Health of the named system.",
+    Help:      fmt.Sprintf("Health of the %s system.", name),
   })
 }
+
+var (
+  hdfs_service          = gauge("hdfs_service")
+  impala_service        = gauge("impala_service")
+  yarn_service          = gauge("yarn_service")
+  spark_on_yarn_service = gauge("spark_on_yarn_service")
+  hive_service          = gauge("hive_service")
+  zookeeper_service     = gauge("zookeeper_service")
+  hue_service           = gauge("hue_service")
+  oozie_service         = gauge("oozie_service")
+)
+
 
 var (
   hdfs_blocks_with_corrupt_replicated = gauge("hdfs_blocks_with_corrupt_replicated")
@@ -63,62 +75,111 @@ var (
 
 func init() {
 	prometheus.MustRegister(version.NewCollector("cloudera_exporter"))
-  prometheus.MustRegister(hdfs_blocks_with_corrupt_replicated)
-  prometheus.MustRegister(hdfs_canary_health)
-  prometheus.MustRegister(hdfs_data_nodes_healthy)
-  prometheus.MustRegister(hdfs_free_space_remaining)
-  prometheus.MustRegister(hdfs_ha_namenode_health)
-  prometheus.MustRegister(hdfs_missing_blocks)
-  prometheus.MustRegister(hdfs_under_replicated_blocks)
-  prometheus.MustRegister(impala_assignment_localitydisabled)
-  prometheus.MustRegister(impala_catalogserver_health)
-  prometheus.MustRegister(impala_impalads_healthy)
-  prometheus.MustRegister(impala_statestore_health)
-  prometheus.MustRegister(yarn_jobhistory_health)
-  prometheus.MustRegister(yarn_node_managers_healthy)
-  prometheus.MustRegister(yarn_resourcemanagers_health)
-  prometheus.MustRegister(hive_hivemetastores_healthy)
-  prometheus.MustRegister(hive_hiveserver2s_healthy)
-  prometheus.MustRegister(zookeeper_canary_health)
-  prometheus.MustRegister(zookeeper_servers_healthy)
-  prometheus.MustRegister(hue_hue_servers_healthy)
-  prometheus.MustRegister(oozie_oozie_servers_healthy)
+  prometheus.MustRegister(hdfs_service)
+  prometheus.MustRegister(impala_service)
+  prometheus.MustRegister(yarn_service)
+  prometheus.MustRegister(spark_on_yarn_service)
+  prometheus.MustRegister(hive_service)
+  prometheus.MustRegister(zookeeper_service)
+  prometheus.MustRegister(hue_service)
+  prometheus.MustRegister(oozie_service)
+  
+  // prometheus.MustRegister(hdfs_blocks_with_corrupt_replicated)
+  // prometheus.MustRegister(hdfs_canary_health)
+  // prometheus.MustRegister(hdfs_data_nodes_healthy)
+  // prometheus.MustRegister(hdfs_free_space_remaining)
+  // prometheus.MustRegister(hdfs_ha_namenode_health)
+  // prometheus.MustRegister(hdfs_missing_blocks)
+  // prometheus.MustRegister(hdfs_under_replicated_blocks)
+  // prometheus.MustRegister(impala_assignment_localitydisabled)
+  // prometheus.MustRegister(impala_catalogserver_health)
+  // prometheus.MustRegister(impala_impalads_healthy)
+  // prometheus.MustRegister(impala_statestore_health)
+  // prometheus.MustRegister(yarn_jobhistory_health)
+  // prometheus.MustRegister(yarn_node_managers_healthy)
+  // prometheus.MustRegister(yarn_resourcemanagers_health)
+  // prometheus.MustRegister(hive_hivemetastores_healthy)
+  // prometheus.MustRegister(hive_hiveserver2s_healthy)
+  // prometheus.MustRegister(zookeeper_canary_health)
+  // prometheus.MustRegister(zookeeper_servers_healthy)
+  // prometheus.MustRegister(hue_hue_servers_healthy)
+  // prometheus.MustRegister(oozie_oozie_servers_healthy)
 }
 
 type ClouderaHealthCheck struct {
-  name string
-  summary string
+  Name string
+  Summary string
+}
+
+type ClusterRef struct {
+  ClusterName string
 }
 
 type ClouderaItem struct {
-  name string
+  Name string
   thetype string `json:"type"`
-  serviceUrl string
-  serviceState string
-  healthSummary string
-  healthChecks []ClouderaHealthCheck
+  ClusterRef ClusterRef
+  ServiceUrl string
+  ServiceState string
+  HealthSummary string
+  HealthChecks []ClouderaHealthCheck
+  ConfigStale bool
 }
 
 type ClouderaResponse struct {
-  items []ClouderaItem 
+  Items []ClouderaItem 
 }
 
-func getHealth(opts clouderaOpts) ClouderaResponse {
-var clouderaResponse ClouderaResponse
+func getMetrics(opts clouderaOpts) (ClouderaResponse, error) {
+  path := "/api/v1/clusters/" + opts.clusterName + "/services/"
+  clouderaResponse := &ClouderaResponse{}
 
-  req, _ := http.NewRequest("GET", opts.uri, nil)
+  req, err := http.NewRequest("GET", opts.uri+path, nil)
+  if err != nil {
+    return *clouderaResponse, err
+  }
   req.SetBasicAuth(opts.username, opts.password)
 
-  cli := &http.Client{}
-  resp, _ := cli.Do(req)
+  client := &http.Client{}
+  resp, err := client.Do(req)
+  if err != nil {
+    return *clouderaResponse, err
+  }
 
-  json.NewDecoder(resp.Body).Decode(&clouderaResponse)
-  fmt.Println(len(clouderaResponse.items))
-  return clouderaResponse
+  err = json.NewDecoder(resp.Body).Decode(&clouderaResponse)
+  if err != nil {
+    return *clouderaResponse, err
+  }
+  
+  return *clouderaResponse, nil
 }
 
-
-
+func updateMetric(name string, healthSummary string) {
+  status := 0.0
+  if (healthSummary == "GOOD") {
+    status = 1.0
+  }
+  switch name {
+    case "hdfs":
+      hdfs_service.Set(status)
+    case "impala":
+      impala_service.Set(status)
+    case "yarn":
+      yarn_service.Set(status)
+    case "spark_on_yarn":
+      spark_on_yarn_service.Set(status)
+    case "hive":
+      hive_service.Set(status)
+    case "zookeeper":
+      zookeeper_service.Set(status)
+    case "hue":
+      hue_service.Set(status)
+    case "oozie":
+      oozie_service.Set(status)
+    default:
+      log.Fatalln(fmt.Sprintf("Unknown Metric: %s says &s",name,status))
+  }
+}
 
 func main() {
 	var (
@@ -149,6 +210,21 @@ func main() {
   // }
   // prometheus.MustRegister(exporter)
 
+
+  go func() {
+    for {
+      clouderaResponse, err := getMetrics(opts)
+      if err != nil {
+          log.Fatalln(err)
+      }
+      log.Infoln("updating metrics")
+      for _, item := range clouderaResponse.Items {
+        updateMetric(item.Name, item.HealthSummary)
+      } 
+      time.Sleep(time.Duration(10000 * time.Millisecond))
+    }
+  }()
+
   http.Handle(*metricsPath, prometheus.Handler())
   http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
     w.Write([]byte(`<html>
@@ -164,7 +240,4 @@ func main() {
 
   log.Infoln("Listening on", *listenAddress)
   log.Fatal(http.ListenAndServe(*listenAddress, nil))
-
-
-
 }
