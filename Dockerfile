@@ -14,4 +14,4 @@ FROM scratch
 LABEL maintainer "Gertjan Assies <g.assies@newmotion.com"
 COPY --from=builder /go/ClouderaExporter .
 EXPOSE 9107
-ENTRYPOINT ["/ClouderaExporter"]
+ENTRYPOINT "/ClouderaExporter --cloudera.uri=$CLOUDERA_URI --cloudera.username=$CLOUDERA_USERNAME --cloudera.password=$CLOUDERA_PASSWORD"
