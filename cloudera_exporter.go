@@ -32,7 +32,7 @@ const (
 func gauge(name string) prometheus.Gauge {
   return prometheus.NewGauge(prometheus.GaugeOpts{
     Namespace: namespace,
-    Subsystem: "cloudera",
+    Subsystem: "services",
     Name:      name,
     Help:      fmt.Sprintf("Health of the %s system.", name),
   })
